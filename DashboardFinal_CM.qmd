@@ -1,0 +1,148 @@
+---
+title: "Google Dashboard: Stocks and Searches 2021-2025"
+author: "Clàudia Moliner"
+lang: en
+format:
+  dashboard:
+    theme: united
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+#| include: false
+library(reticulate)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(DT)
+
+invisible(Sys.setlocale("LC_TIME", "C"))
+reticulate::py_require("kagglehub")
+```
+
+```{python}
+#| include: false
+import kagglehub
+path = kagglehub.dataset_download("mmumairkhattak/google-stock-and-search-trends-2021-2025")
+```
+
+```{r}
+#| include: false
+data <- read.csv(file.path(py$path, "google_trends_and_stock_2021_2025.csv"))
+
+data <- data %>%
+  mutate(Date = as.Date(Date),
+         Year = format(Date, "%Y"))
+
+start_price <- head(data$Stock_Close, 1)
+final_price <- tail(data$Stock_Close, 1)
+change      <- round((final_price - start_price) / start_price * 100, 1)
+correlation <- round(cor(data$Search_Trend_AI, data$Stock_Close), 2)
+```
+
+# Overview
+
+## Row {height="20%"}
+
+```{r}
+#| content: valuebox
+#| title: "Final closing price ($)"
+#| icon: currency-dollar
+#| color: primary
+list(value = round(final_price, 2))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Change 2021-2025"
+#| icon: graph-up-arrow
+#| color: success
+list(value = paste0(change, " %"))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Average daily volume (shares)"
+#| icon: bar-chart
+#| color: info
+list(value = paste0(round(mean(data$Volume) / 1e6, 1), "M"))
+```
+
+```{r}
+#| content: valuebox
+#| title: "AI searches vs. price correlation"
+#| icon: search
+#| color: warning
+list(value = correlation)
+```
+
+## Row {height="45%"}
+
+```{r}
+#| title: "Closing price over time"
+f1 <- ggplot(data , aes(Date, Stock_Close, group = 1,
+                       text = paste0("Date: ", format(Date, "%b %d, %Y"),
+                                     "Closing price: $", round(Stock_Close, 2)))) +
+  geom_line(color = "orange") +
+  labs(x = NULL, y = "Closing price ($)") +
+  theme_minimal()
+ggplotly(f1, tooltip = "text")
+```
+
+## Row {height="35%"}
+
+### Column {.tabset width="60%"}
+
+```{r}
+#| title: "Searches: AI vs. Cloud"
+f2 <- ggplot(data, aes(x = Date)) +
+  geom_line(aes(y = Search_Trend_AI, color = "AI", group = 1,
+                text = paste0("Date: ", format(Date, "%b %d, %Y"), "AI searches: ", Search_Trend_AI))) +
+  geom_line(aes(y = Search_Trend_Cloud, color = "Cloud", group = 1,
+                text = paste0("Date: ", format(Date, "%b %d, %Y"), "Cloud searches: ", Search_Trend_Cloud))) +
+  scale_color_manual(values = c("AI" = "violet", "Cloud" = "darkgreen")) +
+  labs(x = NULL, y = "Search interest", color = NULL) +
+  theme_minimal()
+ggplotly(f2, tooltip = "text")
+```
+
+```{r}
+#| title: "Average volume per year"
+f4 <- data %>%
+  group_by(Year) %>%
+  summarise(volume = mean(Volume) / 1e6) %>%
+  ggplot(aes(Year, volume,
+             text = paste0("Year: ", Year, ">Average volume: ", round(volume, 1), " million"))) +
+  geom_col(fill = "salmon") +
+  labs(x = NULL, y = "Average volume (millions)") +
+  theme_minimal()
+ggplotly(f4, tooltip = "text")
+```
+
+### Column {width="40%"}
+
+```{r}
+#| title: "More AI searches = higher price?"
+f3 <- ggplot(data, aes(Search_Trend_AI, Stock_Close)) +
+  geom_point(aes(text = paste0("Date: ", format(Date, "%b %d, %Y"),
+                              "AI searches: ", Search_Trend_AI,
+                              "Closing price: $", round(Stock_Close, 2))),
+             alpha = 0.3, color = "violet") +
+  geom_smooth(method = "lm", color = "black") +
+  labs(x = "AI searches", y = "Closing price ($)") +
+  theme_minimal()
+ggplotly(f3, tooltip = "text")
+```
+
+# Data
+
+```{r}
+#| title: "Full table"
+datatable(data,
+          colnames = c("Date", "Open price ($)", "Close price ($)", "Volume",
+                       "AI searches", "Cloud searches", "Year"),
+          options = list(pageLength = 15))
+```
